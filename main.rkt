@@ -24,17 +24,9 @@
 ;;;   (jsonrpc-server-notify pid "notification" '())
 ;;;   (jsonrpc-server-stop pid)
 
-(require "server.rkt"
-         "transport.rkt")
+(require "server.rkt")
 
 (provide
- ;; Core GenServer interface
- gen:jsonrpc-server
- jsonrpc-server-start
- jsonrpc-server-request
- jsonrpc-server-notify
- jsonrpc-server-stop
-
  ;; Response helpers
  jsonrpc-ok
  jsonrpc-error
@@ -45,15 +37,7 @@
  METHOD-NOT-FOUND
  INVALID-PARAMS
  INTERNAL-ERROR
-
- ;; Stdio transport (LSP-style)
- jsonrpc-stdio-server-start
- jsonrpc-stdio-send
-
- ;; Connection-based transport
- jsonrpc-connection-start
- jsonrpc-connection-send
- jsonrpc-connection-close)
+ )
 
 (module+ test
   (require rackunit
