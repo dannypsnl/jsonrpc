@@ -1,6 +1,6 @@
 #lang info
 (define collection "jsonrpc")
-(define deps '("base" "Rakka" "json-lib"))
+(define deps '("base" "Rakka"))
 (define build-deps '("scribble-lib" "racket-doc" "rackunit-lib"))
 (define scribblings '(("scribblings/jsonrpc.scrbl" ())))
 (define pkg-desc "Description Here")
