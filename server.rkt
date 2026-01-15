@@ -3,6 +3,8 @@
 (provide
  ;; Server operations
  jsonrpc-server-start
+ jsonrpc-server-request/raw
+ jsonrpc-server-notify/raw
  jsonrpc-server-request
  jsonrpc-server-notify
  jsonrpc-server-stop
@@ -24,9 +26,7 @@
 
 (require rakka
          racket/match
-         racket/port
-         json
-         racket/generic)
+         json)
 
 ;;; JSON-RPC 2.0 Error Codes
 (define PARSE-ERROR -32700)
@@ -131,8 +131,8 @@
 ;; method: string, the method name
 ;; params: list or hash, the parameters
 ;; Returns: hash (the JSON-RPC response)
-(define (jsonrpc-server-request pid method params)
-  (gen-server-call pid (list 'request method params (gensym 'req))))
+(define (jsonrpc-server-request pid id method params)
+  (gen-server-call pid (list 'request method params id)))
 
 ;; Send a notification (no response)
 (define (jsonrpc-server-notify pid method params)

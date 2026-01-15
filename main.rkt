@@ -3,30 +3,48 @@
 ;;; JSON-RPC 2.0 library with GenServer abstraction (using Rakka)
 ;;;
 ;;; This library provides a GenServer-based abstraction for building
-;;; JSON-RPC 2.0 servers and clients.
+;;; JSON-RPC 2.0 servers.
 ;;;
 ;;; Usage:
-;;;   (require jsonrpc)
+;;;   (require jsonrpc rakka)
 ;;;
-;;; Define your server by implementing gen:jsonrpc-server:
+;;; Define your server using Rakka's gen:server:
 ;;;
 ;;;   (struct my-server ()
-;;;     #:methods gen:jsonrpc-server
-;;;     [(define (jsonrpc-init self args) ...)
-;;;      (define (jsonrpc-handle-request self method params state) ...)
-;;;      (define (jsonrpc-handle-notify self method params state) ...)
-;;;      (define (jsonrpc-terminate self reason state) ...)])
+;;;     #:methods gen:server
+;;;     [(define (init self args) (ok initial-state))
+;;;      (define (handle-call self msg state from)
+;;;        (match msg
+;;;          [`("method-name" . ,params)
+;;;           (reply result-value state)]))
+;;;      (define (handle-cast self msg state)
+;;;        (match msg
+;;;          [`("notification" . ,params) (noreply new-state)]))
+;;;      (define (handle-info self msg state) (noreply state))
+;;;      (define (terminate self reason state) (void))])
 ;;;
 ;;; Then start and use it:
 ;;;
-;;;   (define pid (jsonrpc-server-start (my-server)))
+;;;   (define inner-pid (gen-server-start (my-server) args))
+;;;   (define pid (jsonrpc-server-start inner-pid))
 ;;;   (jsonrpc-server-request pid "method-name" '(params))
 ;;;   (jsonrpc-server-notify pid "notification" '())
 ;;;   (jsonrpc-server-stop pid)
+;;;
+;;; For stdio transport (LSP-style):
+;;;
+;;;   (jsonrpc-stdio-loop pid)
 
-(require "server.rkt")
+(require "server.rkt"
+         "transport.rkt")
 
 (provide
+ ;; Server operations
+ jsonrpc-server-start
+ jsonrpc-server-request/raw
+ jsonrpc-server-notify/raw
+ jsonrpc-server-stop
+
  ;; Response helpers
  jsonrpc-ok
  jsonrpc-error
@@ -37,7 +55,11 @@
  METHOD-NOT-FOUND
  INVALID-PARAMS
  INTERNAL-ERROR
- )
+
+ ;; Transport layer
+ read-jsonrpc-message
+ write-jsonrpc-message
+ jsonrpc-stdio-loop)
 
 (module+ test
   (require rackunit
