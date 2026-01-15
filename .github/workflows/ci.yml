@@ -10,9 +10,6 @@ jobs:
       matrix:
         racket-version: ["8.0", "8.18", "9.0"]
         racket-variant: ["CS"]
-        include:
-          - racket-version: current
-            experimental: true
     steps:
       - uses: actions/checkout@v4
       - uses: Bogdanp/setup-racket@v1.12
