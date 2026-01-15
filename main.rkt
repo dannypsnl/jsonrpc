@@ -1,50 +1,66 @@
 #lang racket/base
 
+;;; JSON-RPC 2.0 library with GenServer abstraction (using Rakka)
+;;;
+;;; This library provides a GenServer-based abstraction for building
+;;; JSON-RPC 2.0 servers and clients.
+;;;
+;;; Usage:
+;;;   (require jsonrpc)
+;;;
+;;; Define your server by implementing gen:jsonrpc-server:
+;;;
+;;;   (struct my-server ()
+;;;     #:methods gen:jsonrpc-server
+;;;     [(define (jsonrpc-init self args) ...)
+;;;      (define (jsonrpc-handle-request self method params state) ...)
+;;;      (define (jsonrpc-handle-notify self method params state) ...)
+;;;      (define (jsonrpc-terminate self reason state) ...)])
+;;;
+;;; Then start and use it:
+;;;
+;;;   (define pid (jsonrpc-server-start (my-server)))
+;;;   (jsonrpc-server-request pid "method-name" '(params))
+;;;   (jsonrpc-server-notify pid "notification" '())
+;;;   (jsonrpc-server-stop pid)
+
+(require "server.rkt"
+         "transport.rkt")
+
+(provide
+ ;; Core GenServer interface
+ gen:jsonrpc-server
+ jsonrpc-server-start
+ jsonrpc-server-request
+ jsonrpc-server-notify
+ jsonrpc-server-stop
+
+ ;; Response helpers
+ jsonrpc-ok
+ jsonrpc-error
+
+ ;; Error codes (JSON-RPC 2.0 spec)
+ PARSE-ERROR
+ INVALID-REQUEST
+ METHOD-NOT-FOUND
+ INVALID-PARAMS
+ INTERNAL-ERROR
+
+ ;; Stdio transport (LSP-style)
+ jsonrpc-stdio-server-start
+ jsonrpc-stdio-send
+
+ ;; Connection-based transport
+ jsonrpc-connection-start
+ jsonrpc-connection-send
+ jsonrpc-connection-close)
+
 (module+ test
-  (require rackunit))
+  (require rackunit
+           "server.rkt")
 
-;; Notice
-;; To install (from within the package directory):
-;;   $ raco pkg install
-;; To install (once uploaded to pkgs.racket-lang.org):
-;;   $ raco pkg install <<name>>
-;; To uninstall:
-;;   $ raco pkg remove <<name>>
-;; To view documentation:
-;;   $ raco docs <<name>>
-;;
-;; For your convenience, we have included LICENSE-MIT and LICENSE-APACHE files.
-;; If you would prefer to use a different license, replace those files with the
-;; desired license.
-;;
-;; Some users like to add a `private/` directory, place auxiliary files there,
-;; and require them in `main.rkt`.
-;;
-;; See the current version of the racket style guide here:
-;; http://docs.racket-lang.org/style/index.html
-
-;; Code here
-
-
-
-(module+ test
-  ;; Any code in this `test` submodule runs when this file is run using DrRacket
-  ;; or with `raco test`. The code here does not run when this file is
-  ;; required by another module.
-
-  (check-equal? (+ 2 2) 4))
-
-(module+ main
-  ;; (Optional) main submodule. Put code here if you need it to be executed when
-  ;; this file is run using DrRacket or the `racket` executable.  The code here
-  ;; does not run when this file is required by another module. Documentation:
-  ;; http://docs.racket-lang.org/guide/Module_Syntax.html#%28part._main-and-test%29
-
-  (require racket/cmdline)
-  (define who (box "world"))
-  (command-line
-    #:program "my-program"
-    #:once-each
-    [("-n" "--name") name "Who to say hello to" (set-box! who name)]
-    #:args ()
-    (printf "hello ~a~n" (unbox who))))
+  ;; Basic test to ensure everything loads
+  (check-true (procedure? jsonrpc-server-start))
+  (check-true (procedure? jsonrpc-ok))
+  (check-equal? PARSE-ERROR -32700)
+  (check-equal? METHOD-NOT-FOUND -32601))
