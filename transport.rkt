@@ -141,7 +141,7 @@
          [`("set" ,v) (noreply v)]
          [_ (noreply state)]))])
 
-  (with-runtime #:schedulers 4
+  (with-runtime #:schedulers 1
     ;; Test reading/writing through pipes
     (let ()
       (define-values (client-in server-out) (make-pipe))

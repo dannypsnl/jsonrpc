@@ -170,7 +170,7 @@
          [_ (noreply state)]))])
 
 
-  (with-runtime #:schedulers 4
+  (with-runtime #:schedulers 1
     ;; Test the echo server
     (define pid (jsonrpc-server-start (gen-server-start (echo-server) #f)))
 
