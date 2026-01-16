@@ -170,34 +170,36 @@
          [_ (noreply state)]))])
 
 
-  ;; Test the echo server
-  (define pid (jsonrpc-server-start (gen-server-start (echo-server) #f)))
+  (with-runtime #:schedulers 4
+    ;; Test the echo server
+    (define pid (jsonrpc-server-start (gen-server-start (echo-server) #f)))
 
-  ;; Test initial counter
-  (define resp0 (jsonrpc-server-request pid 1 "get-counter" '()))
-  (check-equal? (hash-ref resp0 'jsonrpc) "2.0")
-  (check-equal? (hash-ref resp0 'result) 0)
+    ;; Test initial counter
+    (define resp0 (jsonrpc-server-request pid 1 "get-counter" '()))
+    (check-equal? (hash-ref resp0 'jsonrpc) "2.0")
+    (check-equal? (hash-ref resp0 'result) 0)
 
-  ;; Test increment
-  (jsonrpc-server-notify pid "increment" '())
-  (sleep 0.05) ;; Give time for notification to process
-  (define resp2 (jsonrpc-server-request pid 2 "get-counter" '()))
-  (check-equal? (hash-ref resp2 'result) 1)
+    ;; Test increment
+    (jsonrpc-server-notify pid "increment" '())
+    (sleep 0.05) ;; Give time for notification to process
+    (define resp2 (jsonrpc-server-request pid 2 "get-counter" '()))
+    (check-equal? (hash-ref resp2 'result) 1)
 
-  (jsonrpc-server-notify pid "increment" '())
-  (sleep 0.05)
-  (define resp3 (jsonrpc-server-request pid 3 "get-counter" '()))
-  (check-equal? (hash-ref resp3 'result) 2)
+    (jsonrpc-server-notify pid "increment" '())
+    (sleep 0.05)
+    (define resp3 (jsonrpc-server-request pid 3 "get-counter" '()))
+    (check-equal? (hash-ref resp3 'result) 2)
 
-  ;; Test get-counter
-  (define resp4 (jsonrpc-server-request pid 4 "get-counter" '()))
-  (check-equal? (hash-ref resp4 'result) 2)
+    ;; Test get-counter
+    (define resp4 (jsonrpc-server-request pid 4 "get-counter" '()))
+    (check-equal? (hash-ref resp4 'result) 2)
 
-  ;; Test notification (reset)
-  (jsonrpc-server-notify pid "reset" '())
-  (sleep 0.05) ;; Give time for notification to process
-  (define resp5 (jsonrpc-server-request pid 5 "get-counter" '()))
-  (check-equal? (hash-ref resp5 'result) 0)
+    ;; Test notification (reset)
+    (jsonrpc-server-notify pid "reset" '())
+    (sleep 0.05) ;; Give time for notification to process
+    (define resp5 (jsonrpc-server-request pid 5 "get-counter" '()))
+    (check-equal? (hash-ref resp5 'result) 0)
 
-  ;; Clean up
-  (jsonrpc-server-stop pid))
+    ;; Clean up
+    (jsonrpc-server-stop pid)
+    ))

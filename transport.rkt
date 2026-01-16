@@ -141,60 +141,62 @@
          [`("set" ,v) (noreply v)]
          [_ (noreply state)]))])
 
-  ;; Test reading/writing through pipes
-  (let ()
-    (define-values (client-in server-out) (make-pipe))
-    (define-values (server-in client-out) (make-pipe))
+  (with-runtime #:schedulers 4
+    ;; Test reading/writing through pipes
+    (let ()
+      (define-values (client-in server-out) (make-pipe))
+      (define-values (server-in client-out) (make-pipe))
 
-    ;; Write a request
-    (define req (hasheq 'jsonrpc "2.0" 'method "add" 'params '(3 4) 'id 1))
-    (write-jsonrpc-message client-out req)
-    (close-output-port client-out)
+      ;; Write a request
+      (define req (hasheq 'jsonrpc "2.0" 'method "add" 'params '(3 4) 'id 1))
+      (write-jsonrpc-message client-out req)
+      (close-output-port client-out)
 
-    ;; Read it
-    (define msg (read-jsonrpc-message server-in))
-    (check-equal? (string->jsexpr msg) req)
+      ;; Read it
+      (define msg (read-jsonrpc-message server-in))
+      (check-equal? (string->jsexpr msg) req)
 
-    (close-input-port client-in)
-    (close-input-port server-in)
-    (close-output-port server-out))
+      (close-input-port client-in)
+      (close-input-port server-in)
+      (close-output-port server-out))
 
-  ;; Test full loop with threading
-  (let ()
-    (define-values (client-in server-out) (make-pipe))
-    (define-values (server-in client-out) (make-pipe))
+    ;; Test full loop with threading
+    (let ()
+      (define-values (client-in server-out) (make-pipe))
+      (define-values (server-in client-out) (make-pipe))
 
-    ;; Start the server
-    (define inner-pid (gen-server-start (test-server) #f))
-    (define jsonrpc-pid (jsonrpc-server-start inner-pid))
+      ;; Start the server
+      (define inner-pid (gen-server-start (test-server) #f))
+      (define jsonrpc-pid (jsonrpc-server-start inner-pid))
 
-    ;; Run the loop in a thread
-    (define loop-thread
-      (thread (lambda ()
-                (jsonrpc-stdio-loop jsonrpc-pid #:in server-in #:out server-out))))
+      ;; Run the loop in a thread
+      (define loop-thread
+        (thread (lambda ()
+                  (jsonrpc-stdio-loop jsonrpc-pid #:in server-in #:out server-out))))
 
-    ;; Send a request
-    (write-jsonrpc-message client-out
-                           (hasheq 'jsonrpc "2.0" 'method "add" 'params '(10 20) 'id 1))
+      ;; Send a request
+      (write-jsonrpc-message client-out
+                             (hasheq 'jsonrpc "2.0" 'method "add" 'params '(10 20) 'id 1))
 
-    ;; Read response
-    (define resp (string->jsexpr (read-jsonrpc-message client-in)))
-    (check-equal? (hash-ref resp 'jsonrpc) "2.0")
-    (check-equal? (hash-ref resp 'result) 30)
-    (check-equal? (hash-ref resp 'id) 1)
+      ;; Read response
+      (define resp (string->jsexpr (read-jsonrpc-message client-in)))
+      (check-equal? (hash-ref resp 'jsonrpc) "2.0")
+      (check-equal? (hash-ref resp 'result) 30)
+      (check-equal? (hash-ref resp 'id) 1)
 
-    ;; Send another request
-    (write-jsonrpc-message client-out
-                           (hasheq 'jsonrpc "2.0" 'method "echo" 'params '("hello") 'id 2))
+      ;; Send another request
+      (write-jsonrpc-message client-out
+                             (hasheq 'jsonrpc "2.0" 'method "echo" 'params '("hello") 'id 2))
 
-    (define resp2 (string->jsexpr (read-jsonrpc-message client-in)))
-    (check-equal? (hash-ref resp2 'result) '("hello"))
+      (define resp2 (string->jsexpr (read-jsonrpc-message client-in)))
+      (check-equal? (hash-ref resp2 'result) '("hello"))
 
-    ;; Clean up - close output to signal EOF
-    (close-output-port client-out)
-    (thread-wait loop-thread)
+      ;; Clean up - close output to signal EOF
+      (close-output-port client-out)
+      (thread-wait loop-thread)
 
-    (jsonrpc-server-stop jsonrpc-pid)
-    (close-input-port client-in)
-    (close-input-port server-in)
-    (close-output-port server-out)))
+      (jsonrpc-server-stop jsonrpc-pid)
+      (close-input-port client-in)
+      (close-input-port server-in)
+      (close-output-port server-out))
+    ))
