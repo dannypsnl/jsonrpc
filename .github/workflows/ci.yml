@@ -23,4 +23,4 @@ jobs:
       - name: Compiling jsonrpc and building its docs
         run: raco setup --check-pkg-deps --unused-pkg-deps jsonrpc
       - name: Testing jsonrpc
-        run: raco test -x -p jsonrpc
+        run: raco test -x .
