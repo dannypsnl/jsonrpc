@@ -103,7 +103,7 @@
           (cond
             [id
              ;; Request - send response with original ID
-             (define response (jsonrpc-server-request jsonrpc-pid method params))
+             (define response (jsonrpc-server-request jsonrpc-pid id method params))
              ;; Replace the internal ID with the client's original ID
              (write-jsonrpc-message out (hash-set response 'id id))
              (loop)]
