@@ -24,8 +24,9 @@
  INVALID-PARAMS
  INTERNAL-ERROR)
 
-(require rakka
+(require erl
          racket/match
+         racket/class
          json)
 
 ;;; JSON-RPC 2.0 Error Codes
@@ -39,38 +40,41 @@
 (struct jsonrpc-ok (result) #:transparent)
 (struct jsonrpc-error (code message data) #:transparent)
 
-;;; Internal GenServer wrapper that bridges rakka's gen:server with gen:jsonrpc-server
-(struct jsonrpc-server-wrapper ()
-  #:methods gen:server
-  [(define (init self args)
-     (match-define (list impl) args)
-     (ok impl))
+;;; Internal GenServer wrapper that bridges erl's gen-server% with JSON-RPC
+(define jsonrpc-server-wrapper%
+  (class gen-server%
+    (super-new)
+    (inherit ok noreply reply)
 
-   (define (handle-call self msg state from)
-     (define impl state)
-     (match msg
-       ;; JSON-RPC request: (request method params id)
-       [(list 'request method params id)
-        (define json-response (build-response id (gen-server-call impl (cons method params))))
-        (reply json-response impl)]
+    (define/override (init args)
+      (match-define (list impl) args)
+      (ok impl))
 
-       [_ (reply (build-response #f (jsonrpc-error INVALID-REQUEST "Invalid message" #f)) state)]))
+    (define/override (handle-call msg from state)
+      (define impl state)
+      (match msg
+        ;; JSON-RPC request: (request method params id)
+        [(list 'request method params id)
+         (define json-response (build-response id (gen-server:call impl (cons method params))))
+         (reply json-response impl)]
 
-   (define (handle-cast self msg state)
-     (define impl state)
-     (match msg
-       ;; JSON-RPC notification: (notify method params)
-       [(list 'notify method params)
-        (gen-server-cast! impl (cons method params))
-        (noreply impl)]
+        [_ (reply (build-response #f (jsonrpc-error INVALID-REQUEST "Invalid message" #f)) state)]))
 
-       [_ (noreply state)]))
+    (define/override (handle-cast msg state)
+      (define impl state)
+      (match msg
+        ;; JSON-RPC notification: (notify method params)
+        [(list 'notify method params)
+         (gen-server:cast! impl (cons method params))
+         (noreply impl)]
 
-   (define (handle-info self msg state)
-     (noreply state))
+        [_ (noreply state)]))
 
-   (define (terminate self reason state)
-     (void))])
+    (define/override (handle-info msg state)
+      (noreply state))
+
+    (define/override (terminate reason state)
+      (void))))
 
 ;;; Parse JSON-RPC message
 ;;; Returns (list method params id) or jsonrpc-error
@@ -122,84 +126,84 @@
 ;;; Public API
 
 ;; Start a JSON-RPC server
-;; impl: an instance implementing gen:jsonrpc-server
-;; args: initialization arguments passed to jsonrpc-init
+;; impl: a pid of a gen-server (started with gen-server:start)
 (define (jsonrpc-server-start impl)
-  (gen-server-start (jsonrpc-server-wrapper) (list impl)))
+  (gen-server:start (new jsonrpc-server-wrapper%) (list impl)))
 
 ;; Send a request and wait for response
 ;; method: string, the method name
 ;; params: list or hash, the parameters
 ;; Returns: hash (the JSON-RPC response)
 (define (jsonrpc-server-request pid id method params)
-  (gen-server-call pid (list 'request method params id)))
+  (gen-server:call pid (list 'request method params id)))
 
 ;; Send a notification (no response)
 (define (jsonrpc-server-notify pid method params)
-  (gen-server-cast! pid (list 'notify method params)))
+  (gen-server:cast! pid (list 'notify method params)))
 
 ;; Send a request with raw JSON string
 (define (jsonrpc-server-request/raw pid json-str)
-  (gen-server-call pid (cons 'request (parse-jsonrpc json-str))))
+  (gen-server:call pid (cons 'request (parse-jsonrpc json-str))))
 ;; Send a notification with raw JSON string
 (define (jsonrpc-server-notify/raw pid json-str)
-  (gen-server-cast! pid (cons 'notify (parse-jsonrpc json-str))))
+  (gen-server:cast! pid (cons 'notify (parse-jsonrpc json-str))))
 
 ;; Stop the server
 (define (jsonrpc-server-stop pid [reason "normal"])
-  (gen-server-stop pid reason))
+  (gen-server:stop pid reason))
 
 (module+ test
   (require rackunit)
 
   ;; Example implementation
-  (struct echo-server ()
-    #:methods gen:server
-    [(define (init self args)
-       (ok 0))
+  (define echo-server%
+    (class gen-server%
+      (super-new)
+      (inherit ok noreply reply)
 
-     (define (handle-call self msg state from)
-       (match msg
-         [`("get-counter") (reply state state)]
-         [_ (reply #f state)]))
+      (define/override (init args)
+        (ok 0))
 
-     (define (handle-cast self msg state)
-       (match msg
-         [`("reset") (noreply 0)]
-         [`("increment") (noreply (add1 state))]
-         [_ (noreply state)]))])
+      (define/override (handle-call msg from state)
+        (match msg
+          [`("get-counter") (reply state state)]
+          [_ (reply #f state)]))
 
+      (define/override (handle-cast msg state)
+        (match msg
+          [`("reset") (noreply 0)]
+          [`("increment") (noreply (add1 state))]
+          [_ (noreply state)]))))
 
-  (with-runtime #:schedulers 1
-    ;; Test the echo server
-    (define pid (jsonrpc-server-start (gen-server-start (echo-server) #f)))
+  ;; Test the echo server
+  (define pid (jsonrpc-server-start (gen-server:start (new echo-server%) #f)))
 
-    ;; Test initial counter
-    (define resp0 (jsonrpc-server-request pid 1 "get-counter" '()))
-    (check-equal? (hash-ref resp0 'jsonrpc) "2.0")
-    (check-equal? (hash-ref resp0 'result) 0)
+  ;; Test initial counter
+  (define resp0 (jsonrpc-server-request pid 1 "get-counter" '()))
+  (check-equal? (hash-ref resp0 'jsonrpc) "2.0")
+  (check-equal? (hash-ref resp0 'result) 0)
 
-    ;; Test increment
-    (jsonrpc-server-notify pid "increment" '())
-    (sleep 0.05) ;; Give time for notification to process
-    (define resp2 (jsonrpc-server-request pid 2 "get-counter" '()))
-    (check-equal? (hash-ref resp2 'result) 1)
+  ;; Test increment
+  (jsonrpc-server-notify pid "increment" '())
+  (sleep 0.05) ;; Give time for notification to process
+  (define resp2 (jsonrpc-server-request pid 2 "get-counter" '()))
+  (check-equal? (hash-ref resp2 'result) 1)
 
-    (jsonrpc-server-notify pid "increment" '())
-    (sleep 0.05)
-    (define resp3 (jsonrpc-server-request pid 3 "get-counter" '()))
-    (check-equal? (hash-ref resp3 'result) 2)
+  (jsonrpc-server-notify pid "increment" '())
+  (sleep 0.05)
+  (define resp3 (jsonrpc-server-request pid 3 "get-counter" '()))
+  (check-equal? (hash-ref resp3 'result) 2)
 
-    ;; Test get-counter
-    (define resp4 (jsonrpc-server-request pid 4 "get-counter" '()))
-    (check-equal? (hash-ref resp4 'result) 2)
+  ;; Test get-counter
+  (define resp4 (jsonrpc-server-request pid 4 "get-counter" '()))
+  (check-equal? (hash-ref resp4 'result) 2)
 
-    ;; Test notification (reset)
-    (jsonrpc-server-notify pid "reset" '())
-    (sleep 0.05) ;; Give time for notification to process
-    (define resp5 (jsonrpc-server-request pid 5 "get-counter" '()))
-    (check-equal? (hash-ref resp5 'result) 0)
+  ;; Test notification (reset)
+  (jsonrpc-server-notify pid "reset" '())
+  (sleep 0.05) ;; Give time for notification to process
+  (define resp5 (jsonrpc-server-request pid 5 "get-counter" '()))
+  (check-equal? (hash-ref resp5 'result) 0)
 
-    ;; Clean up
-    (jsonrpc-server-stop pid)
-    ))
+  ;; Clean up
+  (jsonrpc-server-stop pid)
+  )

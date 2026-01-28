@@ -1,31 +1,34 @@
 #lang racket/base
 
-;;; JSON-RPC 2.0 library with GenServer abstraction (using Rakka)
+;;; JSON-RPC 2.0 library with GenServer abstraction (using erl)
 ;;;
 ;;; This library provides a GenServer-based abstraction for building
 ;;; JSON-RPC 2.0 servers.
 ;;;
 ;;; Usage:
-;;;   (require jsonrpc rakka)
+;;;   (require racket/class erl jsonrpc)
 ;;;
-;;; Define your server using Rakka's gen:server:
+;;; Define your server using erl's gen-server%:
 ;;;
-;;;   (struct my-server ()
-;;;     #:methods gen:server
-;;;     [(define (init self args) (ok initial-state))
-;;;      (define (handle-call self msg state from)
-;;;        (match msg
-;;;          [`("method-name" . ,params)
-;;;           (reply result-value state)]))
-;;;      (define (handle-cast self msg state)
-;;;        (match msg
-;;;          [`("notification" . ,params) (noreply new-state)]))
-;;;      (define (handle-info self msg state) (noreply state))
-;;;      (define (terminate self reason state) (void))])
+;;;   (define my-server%
+;;;     (class gen-server%
+;;;       (super-new)
+;;;       (inherit ok noreply reply)
+;;;
+;;;       (define/override (init args) (ok initial-state))
+;;;       (define/override (handle-call msg from state)
+;;;         (match msg
+;;;           [`("method-name" . ,params)
+;;;            (reply result-value state)]))
+;;;       (define/override (handle-cast msg state)
+;;;         (match msg
+;;;           [`("notification" . ,params) (noreply new-state)]))
+;;;       (define/override (handle-info msg state) (noreply state))
+;;;       (define/override (terminate reason state) (void))))
 ;;;
 ;;; Then start and use it:
 ;;;
-;;;   (define inner-pid (gen-server-start (my-server) args))
+;;;   (define inner-pid (gen-server:start (new my-server%) args))
 ;;;   (define pid (jsonrpc-server-start inner-pid))
 ;;;   (jsonrpc-server-request pid "method-name" '(params))
 ;;;   (jsonrpc-server-notify pid "notification" '())

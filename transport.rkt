@@ -4,9 +4,10 @@
          write-jsonrpc-message
          jsonrpc-stdio-loop)
 
-(require rakka
+(require erl
          racket/match
          racket/string
+         racket/class
          json
          "server.rkt")
 
@@ -125,78 +126,80 @@
     (close-input-port in))
 
   ;; Simple server for testing
-  (struct test-server ()
-    #:methods gen:server
-    [(define (init self args)
-       (ok 0))
+  (define test-server%
+    (class gen-server%
+      (super-new)
+      (inherit ok noreply reply)
 
-     (define (handle-call self msg state from)
-       (match msg
-         [`("echo" . ,args) (reply args state)]
-         [`("add" ,a ,b) (reply (+ a b) state)]
-         [_ (reply (jsonrpc-error METHOD-NOT-FOUND "Method not found" #f) state)]))
+      (define/override (init args)
+        (ok 0))
 
-     (define (handle-cast self msg state)
-       (match msg
-         [`("set" ,v) (noreply v)]
-         [_ (noreply state)]))])
+      (define/override (handle-call msg from state)
+        (match msg
+          [`("echo" . ,args) (reply args state)]
+          [`("add" ,a ,b) (reply (+ a b) state)]
+          [_ (reply (jsonrpc-error METHOD-NOT-FOUND "Method not found" #f) state)]))
 
-  (with-runtime #:schedulers 1
-    ;; Test reading/writing through pipes
-    (let ()
-      (define-values (client-in server-out) (make-pipe))
-      (define-values (server-in client-out) (make-pipe))
+      (define/override (handle-cast msg state)
+        (match msg
+          [`("set" ,v) (noreply v)]
+          [_ (noreply state)]))))
 
-      ;; Write a request
-      (define req (hasheq 'jsonrpc "2.0" 'method "add" 'params '(3 4) 'id 1))
-      (write-jsonrpc-message client-out req)
-      (close-output-port client-out)
+  ;; Test reading/writing through pipes
+  (let ()
+    (define-values (client-in server-out) (make-pipe))
+    (define-values (server-in client-out) (make-pipe))
 
-      ;; Read it
-      (define msg (read-jsonrpc-message server-in))
-      (check-equal? (string->jsexpr msg) req)
+    ;; Write a request
+    (define req (hasheq 'jsonrpc "2.0" 'method "add" 'params '(3 4) 'id 1))
+    (write-jsonrpc-message client-out req)
+    (close-output-port client-out)
 
-      (close-input-port client-in)
-      (close-input-port server-in)
-      (close-output-port server-out))
+    ;; Read it
+    (define msg (read-jsonrpc-message server-in))
+    (check-equal? (string->jsexpr msg) req)
 
-    ;; Test full loop with threading
-    (let ()
-      (define-values (client-in server-out) (make-pipe))
-      (define-values (server-in client-out) (make-pipe))
+    (close-input-port client-in)
+    (close-input-port server-in)
+    (close-output-port server-out))
 
-      ;; Start the server
-      (define inner-pid (gen-server-start (test-server) #f))
-      (define jsonrpc-pid (jsonrpc-server-start inner-pid))
+  ;; Test full loop with threading
+  (let ()
+    (define-values (client-in server-out) (make-pipe))
+    (define-values (server-in client-out) (make-pipe))
 
-      ;; Run the loop in a thread
-      (define loop-thread
-        (thread (lambda ()
-                  (jsonrpc-stdio-loop jsonrpc-pid #:in server-in #:out server-out))))
+    ;; Start the server
+    (define inner-pid (gen-server:start (new test-server%) #f))
+    (define jsonrpc-pid (jsonrpc-server-start inner-pid))
 
-      ;; Send a request
-      (write-jsonrpc-message client-out
-                             (hasheq 'jsonrpc "2.0" 'method "add" 'params '(10 20) 'id 1))
+    ;; Run the loop in a thread
+    (define loop-thread
+      (thread (lambda ()
+                (jsonrpc-stdio-loop jsonrpc-pid #:in server-in #:out server-out))))
 
-      ;; Read response
-      (define resp (string->jsexpr (read-jsonrpc-message client-in)))
-      (check-equal? (hash-ref resp 'jsonrpc) "2.0")
-      (check-equal? (hash-ref resp 'result) 30)
-      (check-equal? (hash-ref resp 'id) 1)
+    ;; Send a request
+    (write-jsonrpc-message client-out
+                           (hasheq 'jsonrpc "2.0" 'method "add" 'params '(10 20) 'id 1))
 
-      ;; Send another request
-      (write-jsonrpc-message client-out
-                             (hasheq 'jsonrpc "2.0" 'method "echo" 'params '("hello") 'id 2))
+    ;; Read response
+    (define resp (string->jsexpr (read-jsonrpc-message client-in)))
+    (check-equal? (hash-ref resp 'jsonrpc) "2.0")
+    (check-equal? (hash-ref resp 'result) 30)
+    (check-equal? (hash-ref resp 'id) 1)
 
-      (define resp2 (string->jsexpr (read-jsonrpc-message client-in)))
-      (check-equal? (hash-ref resp2 'result) '("hello"))
+    ;; Send another request
+    (write-jsonrpc-message client-out
+                           (hasheq 'jsonrpc "2.0" 'method "echo" 'params '("hello") 'id 2))
 
-      ;; Clean up - close output to signal EOF
-      (close-output-port client-out)
-      (thread-wait loop-thread)
+    (define resp2 (string->jsexpr (read-jsonrpc-message client-in)))
+    (check-equal? (hash-ref resp2 'result) '("hello"))
 
-      (jsonrpc-server-stop jsonrpc-pid)
-      (close-input-port client-in)
-      (close-input-port server-in)
-      (close-output-port server-out))
-    ))
+    ;; Clean up - close output to signal EOF
+    (close-output-port client-out)
+    (thread-wait loop-thread)
+
+    (jsonrpc-server-stop jsonrpc-pid)
+    (close-input-port client-in)
+    (close-input-port server-in)
+    (close-output-port server-out))
+  )
